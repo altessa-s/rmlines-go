@@ -20,11 +20,9 @@ import (
 //
 // The erase may refuse with ErrUnverified, its own check that the edited page
 // reads back as meant, which arbitrary bytes are free to fail; or with
-// ErrOutOfMemory. It may also refuse with ErrItemsNotFound for an item whose
-// preamble declares a non-zero deleted length and still carries a value: the
-// parser reads the value and answers the item, the editor takes any deleted
-// length for a tombstone. The seed in
-// testdata/fuzz/FuzzParse keeps the case. Any other refusal is a failure.
+// ErrOutOfMemory. Any other refusal is a failure: every item the page shows is
+// one the editor can erase. The seed in testdata/fuzz/FuzzParse keeps a page
+// whose highlight carries both a value and a deleted length.
 func FuzzParse(f *testing.F) {
 	for _, dir := range []string{"testdata", filepath.Join("testdata", "v6-samples")} {
 		matches, err := filepath.Glob(filepath.Join(dir, "*.rm"))
@@ -62,8 +60,7 @@ func FuzzParse(f *testing.F) {
 		target := before[0]
 		edited, err := rmlines.EraseItems(data, []rmlines.ItemID{target})
 		switch {
-		case errors.Is(err, rmlines.ErrUnverified), errors.Is(err, rmlines.ErrOutOfMemory),
-			errors.Is(err, rmlines.ErrItemsNotFound):
+		case errors.Is(err, rmlines.ErrUnverified), errors.Is(err, rmlines.ErrOutOfMemory):
 			return
 		case err != nil:
 			t.Fatalf("erasing %v, which the page named: %v", target, err)
