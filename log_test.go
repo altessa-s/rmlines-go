@@ -111,3 +111,39 @@ func TestTheLoggerUnderConcurrentParsing(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+// A handler that panics loses its line, not the parse.
+func TestAPanickingLoggerDoesNotStopTheParse(t *testing.T) {
+	calls := 0
+	rmlines.SetLogger(func(rmlines.LogLevel, string) {
+		calls++
+		panic("a handler that must not panic")
+	})
+	defer rmlines.SetLogger(nil)
+	page, err := rmlines.Parse(pageWithBlock(0x05, make([]byte, 24)))
+	if err != nil || page.SkippedBlocks != 1 {
+		t.Fatalf("parse = %+v, %v; want one skipped block", page, err)
+	}
+	if calls == 0 {
+		t.Errorf("the handler was never called")
+	}
+}
+
+// The C library keeps every sink it is given, so the sink is installed once
+// however often the logger changes.
+func TestTheSinkIsInstalledOnce(t *testing.T) {
+	var seen collected
+	for range 1000 {
+		rmlines.SetLogger(seen.log)
+		rmlines.SetLogger(nil)
+	}
+	if got := rmlines.LogInstalls(); got != 1 {
+		t.Errorf("installed %d times, want 1", got)
+	}
+	rmlines.SetLogger(seen.log)
+	defer rmlines.SetLogger(nil)
+	mustParse(t, pageWithBlock(0x05, make([]byte, 24)))
+	if seen.count() == 0 {
+		t.Errorf("the logger set after the cycles hears nothing")
+	}
+}

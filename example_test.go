@@ -28,8 +28,10 @@ func ExampleParse() {
 	case err != nil:
 		log.Fatal(err)
 	}
-	for _, p := range page.Text.Paragraphs {
-		fmt.Println(p.Text)
+	if page.Text != nil { // a page of ink alone carries no typed text
+		for _, p := range page.Text.Paragraphs {
+			fmt.Println(p.Text)
+		}
 	}
 	fmt.Println(len(page.Strokes), "strokes,", page.SkippedBlocks, "blocks lost")
 	// Output:

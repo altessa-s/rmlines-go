@@ -20,7 +20,9 @@ import (
 // the author of the edit and its counter. It is the handle an edit finds the
 // item by, and by nothing about its looks.
 type ItemID struct {
-	Author  uint8
+	// Author is the index of the edit's author in the page's author table.
+	Author uint8
+	// Counter is the author's counter for the item.
 	Counter uint64
 }
 

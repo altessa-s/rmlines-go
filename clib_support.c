@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 // Compiles the vendored rm_support.c into this package: cgo builds only the C
-// files of the package directory itself.
+// files of the package directory itself. The digest ties the object to the
+// vendored tree; see clib_digest.h.
 
+#include "clib_digest.h"
 #include "internal/clib/src/rm_support.c"

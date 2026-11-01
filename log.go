@@ -26,6 +26,7 @@ const (
 	LogError
 )
 
+// String answers "error" for LogError and "debug" for every other level.
 func (l LogLevel) String() string {
 	if l == LogError {
 		return "error"
@@ -33,39 +34,53 @@ func (l LogLevel) String() string {
 	return "debug"
 }
 
-// logHandler is what the C trampoline calls through. Read on whichever thread
-// is parsing, swapped by SetLogger, hence atomic.
+// logHandler is what the C sink calls through. Read on whichever thread is
+// parsing and swapped by SetLogger, hence atomic; nil drops every line.
 var logHandler atomic.Pointer[func(LogLevel, string)]
 
-// logInstall serialises SetLogger, so that the C sink is installed once per
-// switch from silence to a handler.
-var logInstall sync.Mutex
+// logInstall installs the C sink once per process. The C library keeps every
+// sink it is ever given, so installing on every SetLogger would grow without
+// bound; the sink stays installed and the Go handler decides.
+var logInstall sync.Once
+
+// logInstalls counts installations of the C sink, for the tests.
+var logInstalls atomic.Int32
 
 // SetLogger names the function the parser's diagnostics go to, for the whole
-// process; nil goes back to silence, which is the default. The function is
-// called on whichever goroutine is parsing, so one that touches shared state
-// must guard it itself.
+// process; nil goes back to silence, which is the default. It may be called
+// at any time, from any goroutine.
+//
+// The handler is called on whichever goroutine is parsing, so one that
+// touches shared state must guard it itself. It must not panic: a panic is
+// recovered and discarded with its line, because unwinding through the C
+// parser would skip the release of its memory.
+//
+// Once a logger has been set, the C library formats its lines even while the
+// handler is nil; a line is a few dozen bytes, built only where something was
+// lost or unknown.
 //
 // Nothing in a message is a secret: every value is a count, a block type or a
 // raw style number, never the page's writing, text or file names.
 func SetLogger(handler func(level LogLevel, message string)) {
-	logInstall.Lock()
-	defer logInstall.Unlock()
 	if handler == nil {
-		C.rm_log_silence()
 		logHandler.Store(nil)
 		return
 	}
-	// The C library keeps every sink it was ever given, so a replacement
-	// handler swaps here instead of installing a sink anew.
-	if logHandler.Swap(&handler) == nil {
+	logHandler.Store(&handler)
+	logInstall.Do(func() {
+		logInstalls.Add(1)
 		C.rmgo_log_install()
-	}
+	})
 }
 
 //export rmgoLog
 func rmgoLog(level C.int, message *C.char) {
-	if handler := logHandler.Load(); handler != nil {
-		(*handler)(LogLevel(level), C.GoString(message))
+	handler := logHandler.Load()
+	if handler == nil {
+		return
 	}
+	defer func() {
+		_ = recover() // the line is dropped; the parse goes on
+	}()
+	(*handler)(LogLevel(level), C.GoString(message))
 }

@@ -19,6 +19,7 @@ type Status int
 
 // The statuses a call can answer with.
 const (
+	// StatusOK: no error. No *Error carries it.
 	StatusOK Status = iota
 	// StatusUnexpectedEOF: the stream is shorter than a header, or a block
 	// declares a length past the end of the file.
@@ -32,6 +33,8 @@ const (
 	// StatusMalformedPage: a block that would not read. The parser counts it
 	// in [Page.SkippedBlocks] rather than failing the page.
 	StatusMalformedPage
+	// StatusOutOfMemory: an allocation failed, or a count or a length is
+	// larger than a Go int can hold.
 	StatusOutOfMemory
 	// StatusAnchorOutOfRange: a mark or an image of a draft is fastened to a
 	// paragraph the draft does not have. [Error.Value] names it.
@@ -51,7 +54,8 @@ const (
 	StatusIncompletePage
 )
 
-// String answers the status as a bare English phrase.
+// String answers the status as a bare English phrase, and a phrase of its own
+// for a number the C library does not name.
 func (s Status) String() string {
 	return C.GoString(C.rm_status_string(C.rm_status(s)))
 }
@@ -59,6 +63,7 @@ func (s Status) String() string {
 // Error is what every call of this package fails with. Every field but Status
 // is only as meaningful as Status says.
 type Error struct {
+	// Status says which failure this is.
 	Status Status
 	// Version is the generation a header named, for StatusUnsupportedVersion.
 	Version int
@@ -85,7 +90,12 @@ var (
 	ErrIncompletePage     = &Error{Status: StatusIncompletePage}
 )
 
+// Error spells the status, then the version, the header bytes or the message
+// it carries.
 func (e *Error) Error() string {
+	if e == nil {
+		return "rmlines: <nil>"
+	}
 	var b strings.Builder
 	b.WriteString("rmlines: ")
 	b.WriteString(e.Status.String())
@@ -109,10 +119,11 @@ func (e *Error) Error() string {
 	return b.String()
 }
 
-// Is reports whether target is an *Error of the same Status.
+// Is reports whether target is an *Error of the same Status. A nil *Error,
+// on either side, matches nothing.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
-	return ok && t.Status == e.Status
+	return ok && t != nil && e != nil && t.Status == e.Status
 }
 
 // errorOf turns a C status and the error record beside it into a Go error,

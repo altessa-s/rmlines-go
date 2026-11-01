@@ -53,6 +53,8 @@ var penToolNames = map[PenTool]string{
 	ToolCalligraphy: "calligraphy", ToolShader: "shader",
 }
 
+// String answers the tool's name, or tool(N) for a number this package does
+// not know.
 func (t PenTool) String() string {
 	if name, ok := penToolNames[t]; ok {
 		return name
@@ -105,6 +107,8 @@ var penColorNames = [...]string{
 	"highlighter-orange",
 }
 
+// String answers the colour's name, or color(N) for an index this package
+// does not know.
 func (c PenColor) String() string {
 	if c >= 0 && int(c) < len(penColorNames) {
 		return penColorNames[c]
@@ -143,6 +147,8 @@ var paragraphStyleNames = [...]string{
 	"numbered-nested", "image-block",
 }
 
+// String answers the style's name, or "unknown" for StyleUnknown and any
+// value this package does not know.
 func (s ParagraphStyle) String() string {
 	if s >= 0 && int(s) < len(paragraphStyleNames) {
 		return paragraphStyleNames[s]
@@ -173,6 +179,8 @@ const (
 	ListNumbered ListFamily = 2
 )
 
+// String answers the family's name, or "none" for ListNone and any value
+// this package does not know.
 func (f ListFamily) String() string {
 	switch f {
 	case ListBullet:
@@ -199,6 +207,8 @@ const (
 	CheckboxPartial CheckboxState = 2
 )
 
+// String answers the state's name, or "none" for CheckboxNone and any value
+// this package does not know.
 func (s CheckboxState) String() string {
 	switch s {
 	case CheckboxUnticked:
@@ -223,6 +233,8 @@ const (
 	ColumnWide   TextColumn = 2
 )
 
+// String answers the setting's name, or column(N) for a value this package
+// does not know.
 func (c TextColumn) String() string {
 	switch c {
 	case ColumnNarrow:

@@ -42,18 +42,26 @@ import "github.com/altessa-s/rmlines-go"   // package rmlines
 ## Reading
 
 ```go
+data, err := os.ReadFile("testdata/v6-samples/Normal_AB.rm")
+if err != nil {
+	log.Fatal(err)
+}
 page, err := rmlines.Parse(data)
 switch {
 case errors.Is(err, rmlines.ErrUnsupportedVersion):
 	var rmErr *rmlines.Error
 	errors.As(err, &rmErr)
 	fmt.Println("a page of version", rmErr.Version)
+	return
 case err != nil:
-	return err
+	log.Fatal(err)
 }
-for _, stroke := range page.Strokes {
-	fmt.Println(stroke.Tool, stroke.Color, len(stroke.Points))
+if page.Text != nil { // a page of ink alone carries no typed text
+	for _, p := range page.Text.Paragraphs {
+		fmt.Println(p.Text)
+	}
 }
+fmt.Println(len(page.Strokes), "strokes,", page.SkippedBlocks, "blocks lost")
 ```
 
 Everything `Parse` answers is a Go value. The page is read in C, copied out field by field, and the C memory is released before `Parse` returns:
@@ -69,7 +77,7 @@ Four errors reach this caller, each matched with `errors.Is`:
 | `ErrUnsupportedVersion` | A `.rm` whose header names a generation this reader does not read. `Error.Version` is the number. |
 | `ErrUnsupportedFormat` | Bytes that do not begin as a page at all. The first 32 of them travel in `Error.Message`. |
 | `ErrUnexpectedEOF` | The stream is shorter than a header, or a block declares a length past the end of the file. |
-| `ErrOutOfMemory` | An allocation failed. The whole page is lost, not quietly shortened. |
+| `ErrOutOfMemory` | An allocation failed, or a count or a length is larger than a Go `int` holds. The whole page is lost, not quietly shortened. |
 
 A block that will not read — a length past the block, a NaN coordinate — does not fail the page. It is stepped over, the loss is added to
 `Page.SkippedBlocks`, and a line goes to the logger.
@@ -79,8 +87,8 @@ A block that will not read — a length past the block, a NaN coordinate — doe
 ```go
 heading := uint8(rmlines.StyleHeading)
 points := []rmlines.DraftPoint{rmlines.DefaultPoint(0, 100), rmlines.DefaultPoint(100, 100)}
-page, err := rmlines.Write(&rmlines.Draft{
-	Author: authorUUID, // [16]byte, as the document's .content spells it
+draft := &rmlines.Draft{
+	Author: [16]byte{0x0a, 0x41, 0x8e, 0x1a},
 	Sheet:  rmlines.Sheet{ScreenWidth: 1404, ScreenHeight: 1872, CanvasWidth: 1404, CanvasHeight: 1872},
 	Column: rmlines.ColumnOf(rmlines.ColumnMedium),
 	Paragraphs: []rmlines.DraftParagraph{
@@ -88,11 +96,16 @@ page, err := rmlines.Write(&rmlines.Draft{
 		{Text: "Body"},
 	},
 	Strokes: []rmlines.DraftStroke{rmlines.DefaultStroke(rmlines.ToolFineliner2, rmlines.ColorBlack, points)},
-})
-if err != nil {
-	return err
 }
-return os.WriteFile("page.rm", page, 0o644)
+data, err := rmlines.Write(draft)
+if err != nil {
+	log.Fatal(err)
+}
+page, err := rmlines.Parse(data)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(page.Text.Paragraphs[0].Text, page.Text.Paragraphs[0].Format.HeadingLevel())
 ```
 
 `DefaultPoint` and `DefaultStroke` fill in the defaults a point and a stroke usually carry, as the C library does. Text is UTF-8; ill-formed bytes are
@@ -110,15 +123,23 @@ them short in silence.
 ## Editing
 
 ```go
-marker, err := rmlines.HighlighterItems(data)   // every living mark of the highlighter
+data, err := os.ReadFile("testdata/v6-samples/Wikipedia_highlighted_p1.rm")
 if err != nil {
-	return err
+	log.Fatal(err)
+}
+marker, err := rmlines.HighlighterItems(data)
+if err != nil {
+	log.Fatal(err)
 }
 edited, err := rmlines.EraseItems(data, marker)
 if err != nil {
-	return err
+	log.Fatal(err)
 }
-return os.WriteFile("page.rm", edited, 0o644)
+page, err := rmlines.Parse(edited)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(len(marker), "marks erased,", len(page.Highlights), "left")
 ```
 
 Every parsed stroke and highlight carries the identifier the page calls it by (`ItemID`, spelled `author:counter` by `String` and read back by
@@ -135,14 +156,19 @@ is refused with `ErrIncompletePage` rather than answered in part.
 
 ```go
 rmlines.SetLogger(func(level rmlines.LogLevel, message string) {
-	slog.Debug("rmlines", "level", level, "message", message)
+	log.Printf("rmlines %v: %s", level, message)
 })
 defer rmlines.SetLogger(nil)
+// What a parse could not read is reported to the function above.
 ```
 
 Silence until a logger is set, and silence again after `SetLogger(nil)`. The logger is called on whichever goroutine is parsing, so one that touches
 shared state guards it itself; it may be replaced at any time, from any goroutine. Every value in every message is a count, a block type or a raw style
 number: the page's writing, its text and its file names never reach it.
+
+A logger must not panic: a panic is recovered and the line dropped, because unwinding through the C parser would skip the release of its memory. The C
+side installs its sink once, on the first logger, and keeps it; `SetLogger(nil)` silences the Go side, so from then on lines are formatted in C and
+dropped. A line is a few dozen bytes, built only where something was lost or unknown.
 
 ## Design
 
@@ -155,8 +181,10 @@ in C memory and frees it as one before it returns; the tests run clean under `GO
 **No state between calls.** Each parse, write and erase works in an arena of its own, so any number of them may run at once. The logger is the one
 process-wide setting, held atomically on both sides.
 
-**The whole contract.** Every function rmlines-lib exports is reachable: the predicates on tools, styles and formats, the checkbox state of a line,
-the column helpers and the header version call into C rather than restating the tablet's numbers in a second place.
+**The whole contract.** 31 of the 32 functions rmlines-lib exports are called: the predicates on tools, styles and formats, the checkbox state of a
+line, the column helpers and the header version go to C rather than restating the tablet's numbers in a second place. The 32nd,
+`rm_page_set_template`, names the template of a C page; a parsed page here is a Go value by then, and `Page.WithTemplate` and
+`Page.WithoutTemplate` do the same to it.
 
 **Read, do not draw.** `InkUnitsPerRawWidth` says what a number in the file means (raw width ÷ 4 is a width on the page). Palettes, blend modes, type
 metrics and templates belong to a renderer.
@@ -167,9 +195,10 @@ metrics and templates belong to a renderer.
 |---|---|
 | `*.go` | The API: `page.go` (the model and `Parse`), `write.go`, `edit.go`, `itemid.go`, `enums.go`, `errors.go`, `log.go` |
 | `clib_*.c` | One line each, compiling a vendored C source into the package: cgo builds only the C files of the package directory |
+| `clib_digest.h` | Generated: the vendored tag and a digest of `internal/clib`, so that a change there rebuilds the package |
 | `log_bridge.c` | The C sink that hands diagnostic lines to Go |
 | `internal/clib/` | The vendored rmlines-lib: `src/`, `include/rmlines/`, its `LICENSE` and the tag it was taken at in `VERSION` |
-| `scripts/update-clib.sh` | Re-vendors rmlines-lib from a checkout: `scripts/update-clib.sh ../rmlines-lib` |
+| `scripts/update-clib.sh` | Re-vendors rmlines-lib from a checkout, swapping the tree in whole and rewriting the digest: `scripts/update-clib.sh ../rmlines-lib` |
 | `testdata/` | Pages written on the tablet, and a third-party sample corpus under `v6-samples/` |
 
 ```sh

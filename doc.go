@@ -29,6 +29,8 @@
 // Every failure is an [*Error]. Its [Status] says which, and the sentinel
 // values ([ErrUnsupportedVersion], [ErrItemsNotFound], …) match it through
 // [errors.Is].
+// A count or a length the C library states and a Go int cannot hold is
+// [ErrOutOfMemory]: no Go value of that size can be allocated.
 //
 // # Concurrency
 //

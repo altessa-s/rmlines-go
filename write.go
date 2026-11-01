@@ -29,7 +29,9 @@ type Sheet struct {
 // units and which of the tablet's three settings that is. The two have to
 // agree; [ColumnOf] is how a caller avoids inventing a fourth.
 type Column struct {
-	Width   float32
+	// Width is the column's width in the file's own units.
+	Width float32
+	// Setting is which of the three settings it is: 0, 1 or 2.
 	Setting uint8
 }
 
@@ -50,15 +52,17 @@ type DraftParagraph struct {
 	// Second and Third are tag 2 and tag 3 of the style record.
 	Second *uint8
 	Third  *uint32
-	Bold   bool
-	Italic bool
+	// Bold and Italic set the whole paragraph in that face.
+	Bold, Italic bool
 }
 
 // DraftPoint is one sample of a stroke, with the raw numbers the file stores
 // beside the coordinates. The drawn half-width is Width / 4 in sheet units;
 // the writer stores, it does not interpret.
 type DraftPoint struct {
-	X, Y      float32
+	// X and Y are the position in sheet units, or from the pen for a mark.
+	X, Y float32
+	// Speed, Width, Direction and Pressure are stored as given.
 	Speed     uint16
 	Width     uint16
 	Direction uint8
@@ -81,6 +85,7 @@ func pointFromDraft(p C.rm_draft_point) DraftPoint {
 // DraftStroke is one stroke of a draft: the tool, the colour and the points as
 // written.
 type DraftStroke struct {
+	// Tool is the tool the stroke is drawn with.
 	Tool PenTool
 	// Color is the palette index.
 	Color PenColor
@@ -90,7 +95,8 @@ type DraftStroke struct {
 	// Thickness is the setting on the tablet, 1, 2 or 3, and not a factor:
 	// whatever it does to the line is already in each point's width.
 	Thickness float64
-	Points    []DraftPoint
+	// Points are written in order; nil writes a stroke without points.
+	Points []DraftPoint
 }
 
 // DefaultStroke answers a stroke with the defaults a stroke usually carries:
@@ -122,6 +128,7 @@ const (
 
 // DraftAnchor is where a mark or an image hangs on the typed text.
 type DraftAnchor struct {
+	// Kind is what the anchor hangs on.
 	Kind AnchorKind
 	// Paragraph is read only for AnchorFirstCharacter.
 	Paragraph int32
@@ -131,12 +138,14 @@ type DraftAnchor struct {
 // coordinates are counted from the pen, so the ink follows the text when it
 // reflows.
 type DraftMark struct {
+	// Anchor is where the stroke hangs.
 	Anchor DraftAnchor
 	// PenOrigin is where the pen stands horizontally. The end of a line is the
 	// layout's to know and the format has no layout, so the number comes from
 	// the caller.
 	PenOrigin float32
-	Stroke    DraftStroke
+	// Stroke is the ink, its points counted from the pen.
+	Stroke DraftStroke
 }
 
 // DraftImage is a picture placed on the page. The pixels are not in the .rm;
@@ -164,9 +173,12 @@ type Draft struct {
 	// Nil derives one from Author, the same way every time, so that one
 	// draft always writes the same bytes.
 	MarksAuthor *[16]byte
-	Sheet       Sheet
-	Column      Column
-	Paragraphs  []DraftParagraph
+	// Sheet is the sheet the page declares.
+	Sheet Sheet
+	// Column is the typed-text column; see [ColumnOf].
+	Column Column
+	// Paragraphs are the typed text; none writes a page without text.
+	Paragraphs []DraftParagraph
 	// Strokes hang on nothing, in the sheet's own coordinates.
 	Strokes []DraftStroke
 	// Marks hang on the typed text.
@@ -286,7 +298,7 @@ func Write(d *Draft) ([]byte, error) {
 	if err := errorOf(status, &cerr); err != nil {
 		return nil, err
 	}
-	return takeBytes(out, size), nil
+	return takeBytes(out, size)
 }
 
 func draftAnchorToC(a DraftAnchor) C.rm_draft_anchor {

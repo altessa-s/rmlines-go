@@ -229,3 +229,29 @@ func TestStatusesAndEnumsHaveNames(t *testing.T) {
 		}
 	}
 }
+
+func TestErrorIsMatchesByStatus(t *testing.T) {
+	err := error(&rmlines.Error{Status: rmlines.StatusItemsNotFound, Value: 2, Message: "not on the page: 1:2"})
+	if !errors.Is(err, rmlines.ErrItemsNotFound) {
+		t.Errorf("an error does not match the sentinel of its status")
+	}
+	if errors.Is(err, rmlines.ErrUnverified) {
+		t.Errorf("an error matches the sentinel of another status")
+	}
+	if !errors.Is(rmlines.ErrUnverified, rmlines.ErrUnverified) {
+		t.Errorf("a sentinel does not match itself")
+	}
+	var typedNil *rmlines.Error
+	if errors.Is(err, typedNil) {
+		t.Errorf("an error matches a typed nil")
+	}
+	if errors.Is(typedNil, rmlines.ErrItemsNotFound) {
+		t.Errorf("a typed nil matches a sentinel")
+	}
+	if typedNil.Error() == "" {
+		t.Errorf("a typed nil spells nothing")
+	}
+	if errors.Is(err, errors.New("rmlines: items the page does not hold as living ones")) {
+		t.Errorf("an error matches a plain error by its text")
+	}
+}

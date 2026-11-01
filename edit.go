@@ -40,7 +40,7 @@ func EraseItems(data []byte, ids []ItemID) ([]byte, error) {
 	if err := errorOf(status, &cerr); err != nil {
 		return nil, err
 	}
-	return takeBytes(out, size), nil
+	return takeBytes(out, size)
 }
 
 // HighlighterItems answers every living mark of the highlighter on a page: its
@@ -60,11 +60,12 @@ func HighlighterItems(data []byte) ([]ItemID, error) {
 		return nil, err
 	}
 	defer C.rm_item_ids_free(ids)
-	if count == 0 {
-		return nil, nil
+	n, err := goLength(count, "item count")
+	if err != nil || n == 0 {
+		return nil, err
 	}
-	view := unsafe.Slice(ids, count)
-	out := make([]ItemID, len(view))
+	view := unsafe.Slice(ids, n)
+	out := make([]ItemID, n)
 	for i, id := range view {
 		out[i] = itemIDFromC(id)
 	}
@@ -72,12 +73,16 @@ func HighlighterItems(data []byte) ([]ItemID, error) {
 }
 
 // takeBytes copies bytes the C library handed over into Go memory and
-// releases them.
-func takeBytes(bytes *C.uint8_t, size C.size_t) []byte {
+// releases them. A size past math.MaxInt is refused as [ErrOutOfMemory].
+func takeBytes(bytes *C.uint8_t, size C.size_t) ([]byte, error) {
 	defer C.rm_bytes_free(bytes)
-	out := make([]byte, int(size))
-	if size > 0 {
-		copy(out, unsafe.Slice((*byte)(unsafe.Pointer(bytes)), int(size)))
+	n, err := goLength(size, "page size")
+	if err != nil {
+		return nil, err
 	}
-	return out
+	out := make([]byte, n)
+	if n > 0 {
+		copy(out, unsafe.Slice((*byte)(unsafe.Pointer(bytes)), n))
+	}
+	return out, nil
 }

@@ -5,16 +5,26 @@
 package rmlines_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/altessa-s/rmlines-go"
 )
 
 // FuzzParse feeds the parser arbitrary bytes, seeded with every page in
-// testdata. It must answer a page or an error, and never crash; a page it
-// answers must take an erase of its own marks.
+// testdata. It must answer a page or an error and never crash, and a page it
+// answers must take an erase of its own first mark.
+//
+// The erase may refuse with ErrUnverified, its own check that the edited page
+// reads back as meant, which arbitrary bytes are free to fail; or with
+// ErrOutOfMemory. It may also refuse with ErrItemsNotFound for an item whose
+// preamble declares a non-zero deleted length and still carries a value: the
+// parser reads the value and answers the item, the editor takes any deleted
+// length for a tombstone. The seed in
+// testdata/fuzz/FuzzParse keeps the case. Any other refusal is a failure.
 func FuzzParse(f *testing.F) {
 	for _, dir := range []string{"testdata", filepath.Join("testdata", "v6-samples")} {
 		matches, err := filepath.Glob(filepath.Join(dir, "*.rm"))
@@ -39,13 +49,50 @@ func FuzzParse(f *testing.F) {
 			return
 		}
 		_, _ = rmlines.HighlighterItems(data)
-		if len(page.Strokes) > 0 {
-			_, _ = rmlines.EraseItems(data, []rmlines.ItemID{page.Strokes[0].ID})
-		}
 		if page.Text != nil {
 			for line := range page.Text.Paragraphs {
 				page.Text.CheckboxState(line)
 			}
 		}
+
+		before := livingIDs(page)
+		if len(before) == 0 {
+			return
+		}
+		target := before[0]
+		edited, err := rmlines.EraseItems(data, []rmlines.ItemID{target})
+		switch {
+		case errors.Is(err, rmlines.ErrUnverified), errors.Is(err, rmlines.ErrOutOfMemory),
+			errors.Is(err, rmlines.ErrItemsNotFound):
+			return
+		case err != nil:
+			t.Fatalf("erasing %v, which the page named: %v", target, err)
+		}
+		after, err := rmlines.Parse(edited)
+		if err != nil {
+			t.Fatalf("the edited page does not parse: %v", err)
+		}
+		var want []rmlines.ItemID
+		for _, id := range before {
+			if id != target {
+				want = append(want, id)
+			}
+		}
+		if got := livingIDs(after); !slices.Equal(got, want) {
+			t.Fatalf("after erasing %v: %v, want %v", target, got, want)
+		}
 	})
+}
+
+// livingIDs answers the identifiers of a page's strokes and then its
+// highlights.
+func livingIDs(page *rmlines.Page) []rmlines.ItemID {
+	var ids []rmlines.ItemID
+	for _, s := range page.Strokes {
+		ids = append(ids, s.ID)
+	}
+	for _, h := range page.Highlights {
+		ids = append(ids, h.ID)
+	}
+	return ids
 }

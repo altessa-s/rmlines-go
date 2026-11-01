@@ -9,20 +9,28 @@ package rmlines
 */
 import "C"
 
-import "unsafe"
+import (
+	"math"
+	"unsafe"
+)
 
 // Rect is a rectangle in the page's own coordinates.
 type Rect struct {
+	// X and Y are the rectangle's origin; Width and Height its extent.
 	X, Y, Width, Height float64
 }
 
 // Size is a sheet's width and height in the page's own units.
 type Size struct {
+	// Width and Height are in the page's own units.
 	Width, Height float64
 }
 
 // StrokePoint is one sample of a stroke.
 type StrokePoint struct {
+	// X and Y are the position in the page's own coordinates, Width the raw
+	// width (divide by InkUnitsPerRawWidth for page units) and Pressure the
+	// pen's pressure as the file stores it.
 	X, Y, Width, Pressure float32
 	// Speed is the pen's speed as the file's uint16 stores it; the second
 	// ballpoint thins its ink by it.
@@ -46,10 +54,13 @@ type TextAnchor struct {
 type Stroke struct {
 	// Tool is ToolUnknown when the file named a tool this package does not
 	// know.
-	Tool           PenTool
-	Color          PenColor
+	Tool PenTool
+	// Color is the palette index.
+	Color PenColor
+	// ThicknessScale is the thickness setting the stroke was drawn with.
 	ThicknessScale float64
-	Points         []StrokePoint
+	// Points are the samples in the order they were drawn.
+	Points []StrokePoint
 	// ARGB is the explicit colour, 0xAARRGGBB, when the page carries one.
 	// Where it is set it wins over Color.
 	ARGB *uint32
@@ -67,8 +78,10 @@ type Stroke struct {
 // Highlight is the marker over the text of an imported PDF: ready-made
 // rectangles, not a stroke.
 type Highlight struct {
+	// Rectangles are the bands, in the page's own coordinates.
 	Rectangles []Rect
-	Color      PenColor
+	// Color is the palette index.
+	Color PenColor
 	// ARGB is the explicit colour, when the page carries one; it wins over
 	// Color.
 	ARGB *uint32
@@ -83,6 +96,7 @@ type Highlight struct {
 // ImageVertex is one corner of an image's quad: where it stands on the page
 // and which point of the texture, 0 to 1, it pins there.
 type ImageVertex struct {
+	// X and Y are the position on the page; U and V the texture coordinate.
 	X, Y, U, V float64
 }
 
@@ -105,13 +119,16 @@ type Image struct {
 // FaceRun is a stretch of a line set in bold or italic, in Unicode scalars of
 // the line, half-open: [Start, End).
 type FaceRun struct {
-	Start, End   int32
+	// Start and End bound the run in Unicode scalars of the line.
+	Start, End int32
+	// Bold and Italic are the faces the run is set in.
 	Bold, Italic bool
 }
 
 // Paragraph is one paragraph of typed text with everything the file says
 // about it.
 type Paragraph struct {
+	// Text is the paragraph's UTF-8, without its newline.
 	Text string
 	// Format is the paragraph's style record, when it has one.
 	Format *ParagraphFormat
@@ -126,7 +143,8 @@ type TextBlock struct {
 	// OriginX and OriginY are where the text begins: x counted from the
 	// middle of the sheet, y growing downwards.
 	OriginX, OriginY float64
-	Paragraphs       []Paragraph
+	// Paragraphs are the lines in document order.
+	Paragraphs []Paragraph
 	// ColumnWidth is the declared width of the column, when the file
 	// declares it.
 	ColumnWidth *float64
@@ -134,6 +152,8 @@ type TextBlock struct {
 
 // Page is one parsed page.
 type Page struct {
+	// Strokes are the drawn strokes in the scene's order; a hidden layer's
+	// are left out.
 	Strokes []Stroke
 	// Highlights are the marker over the text of an imported PDF.
 	Highlights []Highlight
@@ -190,7 +210,12 @@ func Parse(data []byte) (*Page, error) {
 		return nil, err
 	}
 	defer C.rm_page_free(page)
-	return pageFromC(page), nil
+	var conv converter
+	out := conv.page(page)
+	if conv.err != nil {
+		return nil, conv.err
+	}
+	return out, nil
 }
 
 // emptyInput stands in for the bytes of an empty slice: the C library takes
@@ -204,11 +229,47 @@ func bytesPointer(data []byte) *C.uint8_t {
 	return (*C.uint8_t)(unsafe.Pointer(&data[0]))
 }
 
-func goString(s C.rm_str) string {
-	if s.length == 0 {
+// errTooLarge answers a count or a length C states and a Go int cannot
+// hold. No Go value of that size can be allocated, so it is reported the way
+// a failed allocation is.
+func errTooLarge(what string) error {
+	return &Error{Status: StatusOutOfMemory, Message: what + " too large for a Go int"}
+}
+
+// goLength converts a C count or length to a Go int, refusing one past
+// math.MaxInt.
+func goLength(n C.size_t, what string) (int, error) {
+	if uint64(n) > math.MaxInt {
+		return 0, errTooLarge(what)
+	}
+	return int(n), nil
+}
+
+// converter copies a C page into Go values. The first count it cannot
+// represent is kept in err, and everything after it is left empty.
+type converter struct {
+	err error
+}
+
+func (c *converter) length(n C.size_t, what string) int {
+	if c.err != nil {
+		return 0
+	}
+	v, err := goLength(n, what)
+	if err != nil {
+		c.err = err
+	}
+	return v
+}
+
+// str copies the bytes of a C string by its stated length, without the
+// int-sized limit of C.GoStringN.
+func (c *converter) str(s C.rm_str) string {
+	n := c.length(s.length, "string length")
+	if n == 0 {
 		return ""
 	}
-	return C.GoStringN(s.bytes, C.int(s.length))
+	return string(unsafe.Slice((*byte)(unsafe.Pointer(s.bytes)), n))
 }
 
 func itemIDFromC(id C.rm_item_id) ItemID {
@@ -232,48 +293,48 @@ func optionalARGB(has C.bool, argb C.uint32_t) *uint32 {
 	return &v
 }
 
-func pageFromC(p *C.rm_page) *Page {
+func (c *converter) page(p *C.rm_page) *Page {
 	out := &Page{
-		AnchoredStrokes:     int(p.anchored_strokes),
-		SkippedBlocks:       int(p.skipped_blocks),
+		AnchoredStrokes:     c.length(p.anchored_strokes, "anchored stroke count"),
+		SkippedBlocks:       c.length(p.skipped_blocks, "skipped block count"),
 		BackgroundVisible:   bool(p.background_visible),
 		RootDocumentVisible: bool(p.root_document_visible),
 	}
 	if p.has_template_name {
-		name := goString(p.template_name)
+		name := c.str(p.template_name)
 		out.TemplateName = &name
 	}
 	if p.has_paper_size {
 		out.PaperSize = &Size{Width: float64(p.paper_size.width), Height: float64(p.paper_size.height)}
 	}
-	if p.stroke_count > 0 {
-		strokes := unsafe.Slice(p.strokes, p.stroke_count)
-		out.Strokes = make([]Stroke, len(strokes))
+	if n := c.length(p.stroke_count, "stroke count"); n > 0 {
+		strokes := unsafe.Slice(p.strokes, n)
+		out.Strokes = make([]Stroke, n)
 		for i := range strokes {
-			out.Strokes[i] = strokeFromC(&strokes[i])
+			out.Strokes[i] = c.stroke(&strokes[i])
 		}
 	}
-	if p.highlight_count > 0 {
-		highlights := unsafe.Slice(p.highlights, p.highlight_count)
-		out.Highlights = make([]Highlight, len(highlights))
+	if n := c.length(p.highlight_count, "highlight count"); n > 0 {
+		highlights := unsafe.Slice(p.highlights, n)
+		out.Highlights = make([]Highlight, n)
 		for i := range highlights {
-			out.Highlights[i] = highlightFromC(&highlights[i])
+			out.Highlights[i] = c.highlight(&highlights[i])
 		}
 	}
-	if p.image_count > 0 {
-		images := unsafe.Slice(p.images, p.image_count)
-		out.Images = make([]Image, len(images))
+	if n := c.length(p.image_count, "image count"); n > 0 {
+		images := unsafe.Slice(p.images, n)
+		out.Images = make([]Image, n)
 		for i := range images {
-			out.Images[i] = imageFromC(&images[i])
+			out.Images[i] = c.image(&images[i])
 		}
 	}
 	if p.has_text {
-		out.Text = textFromC(&p.text)
+		out.Text = c.text(&p.text)
 	}
 	return out
 }
 
-func strokeFromC(s *C.rm_stroke) Stroke {
+func (c *converter) stroke(s *C.rm_stroke) Stroke {
 	out := Stroke{
 		Tool:           PenTool(s.tool),
 		Color:          PenColor(s.color),
@@ -281,9 +342,9 @@ func strokeFromC(s *C.rm_stroke) Stroke {
 		ARGB:           optionalARGB(s.has_argb, s.argb),
 		ID:             itemIDFromC(s.id),
 	}
-	if s.point_count > 0 {
-		points := unsafe.Slice(s.points, s.point_count)
-		out.Points = make([]StrokePoint, len(points))
+	if n := c.length(s.point_count, "point count"); n > 0 {
+		points := unsafe.Slice(s.points, n)
+		out.Points = make([]StrokePoint, n)
 		for i, p := range points {
 			out.Points[i] = StrokePoint{
 				X: float32(p.x), Y: float32(p.y), Width: float32(p.width),
@@ -301,15 +362,15 @@ func strokeFromC(s *C.rm_stroke) Stroke {
 	return out
 }
 
-func highlightFromC(h *C.rm_highlight) Highlight {
+func (c *converter) highlight(h *C.rm_highlight) Highlight {
 	out := Highlight{
 		Color: PenColor(h.color),
 		ARGB:  optionalARGB(h.has_argb, h.argb),
 		ID:    itemIDFromC(h.id),
 	}
-	if h.rectangle_count > 0 {
-		rects := unsafe.Slice(h.rectangles, h.rectangle_count)
-		out.Rectangles = make([]Rect, len(rects))
+	if n := c.length(h.rectangle_count, "rectangle count"); n > 0 {
+		rects := unsafe.Slice(h.rectangles, n)
+		out.Rectangles = make([]Rect, n)
 		for i, r := range rects {
 			out.Rectangles[i] = Rect{
 				X: float64(r.x), Y: float64(r.y), Width: float64(r.width), Height: float64(r.height),
@@ -317,14 +378,14 @@ func highlightFromC(h *C.rm_highlight) Highlight {
 		}
 	}
 	if h.has_text {
-		text := goString(h.text)
+		text := c.str(h.text)
 		out.Text = &text
 	}
 	return out
 }
 
-func imageFromC(m *C.rm_page_image) Image {
-	out := Image{File: goString(m.file), StrokesBefore: int(m.strokes_before)}
+func (c *converter) image(m *C.rm_page_image) Image {
+	out := Image{File: c.str(m.file), StrokesBefore: c.length(m.strokes_before, "strokes before an image")}
 	for i, v := range m.vertices {
 		out.Vertices[i] = ImageVertex{X: float64(v.x), Y: float64(v.y), U: float64(v.u), V: float64(v.v)}
 	}
@@ -334,25 +395,25 @@ func imageFromC(m *C.rm_page_image) Image {
 	return out
 }
 
-func textFromC(t *C.rm_text_block) *TextBlock {
+func (c *converter) text(t *C.rm_text_block) *TextBlock {
 	out := &TextBlock{OriginX: float64(t.origin_x), OriginY: float64(t.origin_y)}
 	if t.has_column_width {
 		width := float64(t.column_width)
 		out.ColumnWidth = &width
 	}
-	if t.paragraph_count > 0 {
-		paragraphs := unsafe.Slice(t.paragraphs, t.paragraph_count)
-		out.Paragraphs = make([]Paragraph, len(paragraphs))
+	if n := c.length(t.paragraph_count, "paragraph count"); n > 0 {
+		paragraphs := unsafe.Slice(t.paragraphs, n)
+		out.Paragraphs = make([]Paragraph, n)
 		for i := range paragraphs {
 			p := &paragraphs[i]
-			para := Paragraph{Text: goString(p.text)}
+			para := Paragraph{Text: c.str(p.text)}
 			if p.has_format {
 				format := formatFromC(&p.format)
 				para.Format = &format
 			}
-			if p.face_count > 0 {
-				faces := unsafe.Slice(p.faces, p.face_count)
-				para.Faces = make([]FaceRun, len(faces))
+			if m := c.length(p.face_count, "face run count"); m > 0 {
+				faces := unsafe.Slice(p.faces, m)
+				para.Faces = make([]FaceRun, m)
 				for j, f := range faces {
 					para.Faces[j] = FaceRun{
 						Start: int32(f.start), End: int32(f.end), Bold: bool(f.bold), Italic: bool(f.italic),
