@@ -51,6 +51,9 @@ jobs:
       - name: Test
         run: go test -race -count=1 ./...
 
+      - name: Test with full cgo pointer checks
+        run: GOEXPERIMENT=cgocheck2 go test -count=1 ./...
+
       - name: Fuzz briefly
         run: go test -run='^$' -fuzz=FuzzParse -fuzztime=20s .
 
