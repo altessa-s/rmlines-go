@@ -8,8 +8,7 @@ this module: `go get` builds it with no system library to install. It reads the 
 **[rmlines-swift](https://github.com/altessa-s/rmlines-swift)**, and writes the same draft to the same bytes.
 
 Part of **[Slate Drive](https://slatedrive.app)** ([repository](https://github.com/altessa-s/slatedrive)), the macOS app that shows a reMarkable
-library in Finder. Its sibling **[rmdoc-swift](https://github.com/altessa-s/rmdoc-swift)** packs and unpacks the `.rmdoc` container these pages
-travel in.
+library in Finder.
 
 ## Why it exists
 
@@ -209,9 +208,11 @@ go test -run='^$' -fuzz=FuzzParse -fuzztime=30s .
 ## See also
 
 - **[rmlines-lib](https://github.com/altessa-s/rmlines-lib)** — the C23 library these bindings compile, with a `rmdump` tool.
-- **[rmlines-swift](https://github.com/altessa-s/rmlines-swift)** — the same format as a Swift package for macOS and iOS.
-- **[rmdoc-swift](https://github.com/altessa-s/rmdoc-swift)** — the `.rmdoc` container a document and its pages are exported and imported in.
-- **[Slate Drive](https://slatedrive.app)** ([repository](https://github.com/altessa-s/slatedrive)) — the app these packages are part of.
+- **[rmlines-swift](https://github.com/altessa-s/rmlines-swift)** — the same page format as a Swift package.
+- **[rmdoc-go](https://github.com/altessa-s/rmdoc-go)** — the `.rmdoc` container for Go: the archive a document and its pages travel in.
+- **[rmmarks-go](https://github.com/altessa-s/rmmarks-go)** — marked text for Go: which words a highlight covers, and how OCR from cropped strips
+  returns to the page.
+- **[rmrender-go](https://github.com/altessa-s/rmrender-go)** — reMarkable pages and documents drawn from Go to PNG and PDF.
 
 ## Acknowledgements
 
@@ -219,7 +220,7 @@ The `.rm` format is not published by reMarkable. This module is built on openly 
 who documented the format, among them [rmscene](https://github.com/ricklupton/rmscene) and
 [remarkable_rust](https://github.com/hiteshjoshi/remarkable_rust).
 
-## Licence
+## License
 
 MIT — see [LICENSE](LICENSE). The vendored C under `internal/clib/` is rmlines-lib, under its own MIT licence beside it. The sample corpus under
 `testdata/v6-samples/` comes from [remarkable_rust](https://github.com/hiteshjoshi/remarkable_rust) and carries its own licence beside it.
