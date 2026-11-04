@@ -26,7 +26,7 @@ static const char *rmgo_header(void) { return RM_HEADER; }
 import "C"
 
 // Version is the version of the vendored rmlines-lib.
-const Version = "1.0.1"
+const Version = "1.1.0"
 
 // The scales the format is written in: what a number in the file means
 // before anything is drawn.
