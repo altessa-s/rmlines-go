@@ -205,10 +205,13 @@ go test -race ./...
 go test -run='^$' -fuzz=FuzzParse -fuzztime=30s .
 ```
 
-## See also
+## Bindings
 
 - **[rmlines-lib](https://github.com/altessa-s/rmlines-lib)** — the C23 library these bindings compile, with a `rmdump` tool.
 - **[rmlines-swift](https://github.com/altessa-s/rmlines-swift)** — the same page format as a Swift package.
+
+## See also
+
 - **[rmdoc-go](https://github.com/altessa-s/rmdoc-go)** — the `.rmdoc` container for Go: the archive a document and its pages travel in.
 - **[rmmarks-go](https://github.com/altessa-s/rmmarks-go)** — marked text for Go: which words a highlight covers, and how OCR from cropped strips
   returns to the page.
