@@ -50,10 +50,11 @@ var logInstalls atomic.Int32
 // process; nil goes back to silence, which is the default. It may be called
 // at any time, from any goroutine.
 //
-// The handler is called on whichever goroutine is parsing, so one that
-// touches shared state must guard it itself. It must not panic: a panic is
-// recovered and discarded with its line, because unwinding through the C
-// parser would skip the release of its memory.
+// The handler runs on a separate goroutine, synchronously with the parse
+// that produced the line. It does not inherit goroutine-bound state such as
+// runtime.LockOSThread; shared state still needs its own guard. A panic or
+// runtime.Goexit is contained and loses only that line, so the parser can
+// finish and release its memory.
 //
 // Once a logger has been set, the C library formats its lines even while the
 // handler is nil; a line is a few dozen bytes, built only where something was
@@ -79,8 +80,20 @@ func rmgoLog(level C.int, message *C.char) {
 	if handler == nil {
 		return
 	}
-	defer func() {
-		_ = recover() // the line is dropped; the parse goes on
+	text := C.GoString(message)
+	_, _ = runCallback(func() { (*handler)(LogLevel(level), text) })
+}
+
+// runCallback waits for fn on a separate goroutine so neither a panic nor
+// Goexit can unwind the C frames of the goroutine waiting for it.
+func runCallback(fn func()) (returned bool, panicValue any) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { panicValue = recover() }()
+		fn()
+		returned = true
 	}()
-	(*handler)(LogLevel(level), C.GoString(message))
+	<-done
+	return returned, panicValue
 }

@@ -5,6 +5,9 @@
 package rmlines_test
 
 import (
+	"math/rand/v2"
+	"runtime"
+	"runtime/metrics"
 	"strings"
 	"sync"
 	"testing"
@@ -77,8 +80,7 @@ func TestTheLatestLoggerStands(t *testing.T) {
 	}
 }
 
-// The logger is called on whichever goroutine parses, and may be replaced
-// while they do.
+// The logger may be replaced while concurrent parses wait for their handlers.
 func TestTheLoggerUnderConcurrentParsing(t *testing.T) {
 	var seen collected
 	rmlines.SetLogger(seen.log)
@@ -145,5 +147,100 @@ func TestTheSinkIsInstalledOnce(t *testing.T) {
 	mustParse(t, pageWithBlock(0x05, make([]byte, 24)))
 	if seen.count() == 0 {
 		t.Errorf("the logger set after the cycles hears nothing")
+	}
+}
+
+func TestLoggerGoexitReturns(t *testing.T) {
+	rmlines.SetLogger(func(rmlines.LogLevel, string) { runtime.Goexit() })
+	defer rmlines.SetLogger(nil)
+	done := make(chan struct{})
+	returned := false
+	go func() {
+		defer close(done)
+		page, err := rmlines.Parse(pageWithBlock(0x05, make([]byte, 24)))
+		returned = err == nil && page.SkippedBlocks == 1
+	}()
+	<-done
+	if !returned {
+		t.Fatal("Parse did not return its normal result")
+	}
+}
+
+func TestLoggerExitsOnSecondLine(t *testing.T) {
+	draft := sampleDraft()
+	for i := range draft.Paragraphs {
+		draft.Paragraphs[i].Style = ptr[uint8](99)
+	}
+	data, err := rmlines.Write(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	rmlines.SetLogger(func(rmlines.LogLevel, string) {
+		calls++
+		if calls == 2 {
+			runtime.Goexit()
+		}
+	})
+	defer rmlines.SetLogger(nil)
+	done := make(chan struct{})
+	returned := false
+	go func() {
+		defer close(done)
+		page, err := rmlines.Parse(data)
+		returned = err == nil && page.Text != nil && len(page.Text.Paragraphs) == 3
+	}()
+	<-done
+	if !returned || calls != 3 {
+		t.Fatalf("returned = %v, calls = %d, want normal result and three lines", returned, calls)
+	}
+}
+
+func TestAbnormalLoggerConcurrentParsing(t *testing.T) {
+	rmlines.SetLogger(func(rmlines.LogLevel, string) {
+		if rand.IntN(2) == 0 {
+			panic("logger panic")
+		}
+		runtime.Goexit()
+	})
+	defer rmlines.SetLogger(nil)
+	data := pageWithBlock(0x05, make([]byte, 24))
+	var wg sync.WaitGroup
+	for range 128 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 20 {
+				page, err := rmlines.Parse(data)
+				if err != nil || page.SkippedBlocks != 1 {
+					t.Errorf("parse = %+v, %v", page, err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestRepeatedLoggerExit(t *testing.T) {
+	rmlines.SetLogger(func(rmlines.LogLevel, string) { runtime.Goexit() })
+	defer rmlines.SetLogger(nil)
+	data := pageWithBlock(0x05, make([]byte, 24))
+	external := func() uint64 {
+		runtime.GC()
+		samples := []metrics.Sample{{Name: "/memory/classes/total:bytes"}, {Name: "/memory/classes/heap/objects:bytes"}}
+		metrics.Read(samples)
+		return samples[0].Value.Uint64() - samples[1].Value.Uint64()
+	}
+	before := external()
+	for range 4000 {
+		page, err := rmlines.Parse(data)
+		if err != nil || page.SkippedBlocks != 1 {
+			t.Fatalf("parse = %+v, %v", page, err)
+		}
+	}
+	after := external()
+	t.Logf("heap-external bytes: before %d, after %d", before, after)
+	if after > before && after-before > 64<<20 {
+		t.Fatalf("heap-external growth = %d bytes, want at most 64 MiB", after-before)
 	}
 }
