@@ -161,11 +161,12 @@ defer rmlines.SetLogger(nil)
 // What a parse could not read is reported to the function above.
 ```
 
-Silence until a logger is set, and silence again after `SetLogger(nil)`. The logger is called on whichever goroutine is parsing, so one that touches
-shared state guards it itself; it may be replaced at any time, from any goroutine. Every value in every message is a count, a block type or a raw style
+Silence until a logger is set, and silence again after `SetLogger(nil)`. The logger runs on a separate goroutine, synchronously with the parse that
+produced the line, without inheriting goroutine-bound state such as `runtime.LockOSThread`. Shared state needs its own guard; the logger
+may be replaced at any time, from any goroutine. Every value in every message is a count, a block type or a raw style
 number: the page's writing, its text and its file names never reach it.
 
-A logger must not panic: a panic is recovered and the line dropped, because unwinding through the C parser would skip the release of its memory. The C
+A panic or `runtime.Goexit` in the logger is contained and loses only that line; the parse goes on and releases its memory. The C
 side installs its sink once, on the first logger, and keeps it; `SetLogger(nil)` silences the Go side, so from then on lines are formatted in C and
 dropped. A line is a few dozen bytes, built only where something was lost or unknown.
 
