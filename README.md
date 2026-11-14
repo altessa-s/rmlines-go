@@ -195,7 +195,7 @@ metrics and templates belong to a renderer.
 |---|---|
 | `*.go` | The API: `page.go` (the model and `Parse`), `write.go`, `edit.go`, `itemid.go`, `enums.go`, `errors.go`, `log.go` |
 | `clib_*.c` | One line each, compiling a vendored C source into the package: cgo builds only the C files of the package directory |
-| `clib_digest.h` | Generated: the vendored tag and a digest of `internal/clib`, so that a change there rebuilds the package |
+| `clib_digest.h` | Generated: the vendored tag and a digest of `internal/clib`, which a test holds the vendored tree to |
 | `log_bridge.c` | The C sink that hands diagnostic lines to Go |
 | `internal/clib/` | The vendored rmlines-lib: `src/`, `include/rmlines/`, its `LICENSE` and the tag it was taken at in `VERSION` |
 | `scripts/update-clib.sh` | Re-vendors rmlines-lib from a checkout, swapping the tree in whole and rewriting the digest: `scripts/update-clib.sh ../rmlines-lib` |
