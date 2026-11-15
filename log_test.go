@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/altessa-s/rmlines-go"
 )
@@ -128,6 +129,38 @@ func TestAPanickingLoggerDoesNotStopTheParse(t *testing.T) {
 	}
 	if calls == 0 {
 		t.Errorf("the handler was never called")
+	}
+}
+
+// The handler holds no lock of the package: it may parse, and the parse it
+// makes logs through it again, and it may replace the logger.
+func TestTheLoggerMayCallBackIn(t *testing.T) {
+	damaged := pageWithBlock(0x05, make([]byte, 24))
+	var inner error
+	nested := false
+	rmlines.SetLogger(func(rmlines.LogLevel, string) {
+		if !nested {
+			nested = true
+			_, inner = rmlines.Parse(damaged)
+			rmlines.SetLogger(nil)
+		}
+	})
+	defer rmlines.SetLogger(nil)
+	done := make(chan error, 1)
+	go func() {
+		_, err := rmlines.Parse(damaged)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil || inner != nil {
+			t.Fatalf("outer parse %v, inner parse %v", err, inner)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a parse from the handler did not return")
+	}
+	if !nested {
+		t.Fatal("the handler was never called")
 	}
 }
 
