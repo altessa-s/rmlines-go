@@ -48,7 +48,7 @@ else
     exit 1
 fi
 
-sources=(rm_bytes rm_editor rm_log rm_model rm_parser rm_support rm_writer)
+sources=(rm_bytes rm_editor rm_log rm_model rm_parser rm_session rm_stroke_edit rm_text_edit rm_support rm_writer)
 headers=(editor export log parser rmlines types writer)
 
 mkdir -p "$internal"
