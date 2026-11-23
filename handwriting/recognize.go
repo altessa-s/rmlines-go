@@ -22,10 +22,14 @@ import (
 
 // Box is a word's bounding rectangle in JIIX millimetres.
 type Box struct{ X, Y, Width, Height float64 }
+
+// Word is one recognized word; Bounds is nil when the service sent none.
 type Word struct {
 	Label  string `json:"label"`
 	Bounds *Box   `json:"bounding-box"`
 }
+
+// Result is the recognized text, one line per text block, and its words.
 type Result struct {
 	Text  string
 	Words []Word
