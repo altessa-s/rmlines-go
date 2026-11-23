@@ -1,7 +1,7 @@
 # rmlines-go
 
 Reading and writing the reMarkable `.rm` v6 page format from Go: the page and its strokes, typed text and its paragraphs, highlights and images — and
-writing fresh pages the tablet accepts. Nothing here draws, and nothing here has heard of the cloud, the document index or a file manager.
+writing fresh pages the tablet accepts. The root package reads and writes local pages.
 
 Idiomatic cgo bindings over **[rmlines-lib](https://github.com/altessa-s/rmlines-lib)**, the portable C23 library, whose sources are vendored into
 this module: `go get` builds it with no system library to install. It reads the same pages to the same strokes, text and styles as rmlines-lib and
@@ -15,6 +15,17 @@ library in Finder.
 A notebook on disk is a CRDT of tagged blocks, not a picture. Turning one into the other is two jobs: **read the file**, then **draw what was read**.
 This module is the first job, for Go: a converter, a sync service or a test harness written in Go reaches the same parser the C and Swift consumers
 do, rather than a second reading of the format that drifts from the first.
+
+## Handwriting recognition
+
+The optional `github.com/altessa-s/rmlines-go/handwriting` package accepts the
+pen strokes of a page or selection. Call
+`handwriting.Recognize(ctx, client, gateway, strokes, "en-US")` with an HTTP
+client that supplies your session's bearer token and the account's regional
+HTTPS gateway. Supply strokes in drawing order and resolve text anchors to scene coordinates.
+Recognition skips highlighters and clips earlier pen trajectories against later erasers.
+The result contains the recognized text and words with optional bounding
+boxes in JIIX millimetres. Empty input completes locally.
 
 ## Requirements
 
@@ -120,6 +131,8 @@ A paragraph or an image file name holding a NUL byte is refused with `ErrInvalid
 them short in silence.
 
 ## Editing
+
+For partially merged concurrent edits from several devices, the underlying library applies its implemented CRDT rules, verified for these page shapes with synthetic files only.
 
 ```go
 data, err := os.ReadFile("testdata/v6-samples/Wikipedia_highlighted_p1.rm")
