@@ -9,9 +9,15 @@
 #include "_cgo_export.h"
 #include "rmlines/log.h"
 
+static _Thread_local uintptr_t session_buffer;
+
+void rmgo_session_log_buffer(uintptr_t handle) {
+    session_buffer = handle;
+}
+
 static void rmgo_log_sink(rm_log_level level, const char *message, void *context) {
     (void)context;
-    rmgoLog((int)level, (char *)message);
+    rmgoLog((int)level, (char *)message, session_buffer);
 }
 
 void rmgo_log_install(void) {

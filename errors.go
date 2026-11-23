@@ -52,6 +52,8 @@ const (
 	// StatusIncompletePage: blocks of the page would not read, so what it
 	// holds cannot be told in full. [Error.Value] is how many.
 	StatusIncompletePage
+	// StatusUnsupportedBlockVersion reports a block type in Value and its minimum reader version in Version.
+	StatusUnsupportedBlockVersion
 )
 
 // String answers the status as a bare English phrase, and a phrase of its own
@@ -65,9 +67,11 @@ func (s Status) String() string {
 type Error struct {
 	// Status says which failure this is.
 	Status Status
-	// Version is the generation a header named, for StatusUnsupportedVersion.
+	// Version is the header generation for StatusUnsupportedVersion or the
+	// minimum reader version for StatusUnsupportedBlockVersion.
 	Version int
-	// Value is the paragraph, the limit or the count the status speaks of.
+	// Value is the paragraph, limit, or count for the status, or the block
+	// type for StatusUnsupportedBlockVersion.
 	Value int64
 	// Message is what the C library had to say: the first bytes of the
 	// header for StatusUnsupportedFormat, otherwise a phrase.
@@ -77,17 +81,18 @@ type Error struct {
 // Sentinels for [errors.Is]: an *Error matches the sentinel of its Status,
 // whatever its other fields hold.
 var (
-	ErrUnexpectedEOF      = &Error{Status: StatusUnexpectedEOF}
-	ErrUnsupportedFormat  = &Error{Status: StatusUnsupportedFormat}
-	ErrUnsupportedVersion = &Error{Status: StatusUnsupportedVersion}
-	ErrMalformedPage      = &Error{Status: StatusMalformedPage}
-	ErrOutOfMemory        = &Error{Status: StatusOutOfMemory}
-	ErrAnchorOutOfRange   = &Error{Status: StatusAnchorOutOfRange}
-	ErrTooManyToNumber    = &Error{Status: StatusTooManyToNumber}
-	ErrInvalidArgument    = &Error{Status: StatusInvalidArgument}
-	ErrItemsNotFound      = &Error{Status: StatusItemsNotFound}
-	ErrUnverified         = &Error{Status: StatusUnverified}
-	ErrIncompletePage     = &Error{Status: StatusIncompletePage}
+	ErrUnexpectedEOF           = &Error{Status: StatusUnexpectedEOF}
+	ErrUnsupportedFormat       = &Error{Status: StatusUnsupportedFormat}
+	ErrUnsupportedVersion      = &Error{Status: StatusUnsupportedVersion}
+	ErrMalformedPage           = &Error{Status: StatusMalformedPage}
+	ErrOutOfMemory             = &Error{Status: StatusOutOfMemory}
+	ErrAnchorOutOfRange        = &Error{Status: StatusAnchorOutOfRange}
+	ErrTooManyToNumber         = &Error{Status: StatusTooManyToNumber}
+	ErrInvalidArgument         = &Error{Status: StatusInvalidArgument}
+	ErrItemsNotFound           = &Error{Status: StatusItemsNotFound}
+	ErrUnverified              = &Error{Status: StatusUnverified}
+	ErrUnsupportedBlockVersion = &Error{Status: StatusUnsupportedBlockVersion}
+	ErrIncompletePage          = &Error{Status: StatusIncompletePage}
 )
 
 // Error spells the status, then the version, the header bytes or the message

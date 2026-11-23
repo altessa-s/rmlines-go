@@ -39,6 +39,7 @@ const (
 	ToolFineliner2        PenTool = 17
 	ToolHighlighter2      PenTool = 18
 	ToolCalligraphy       PenTool = 21
+	ToolMaskedEraser      PenTool = 22
 	ToolShader            PenTool = 23
 )
 
@@ -50,7 +51,7 @@ var penToolNames = map[PenTool]string{
 	ToolPaintbrush2: "paintbrush-2", ToolMechanicalPencil2: "mechanical-pencil-2",
 	ToolPencil2: "pencil-2", ToolBallpoint2: "ballpoint-2", ToolMarker2: "marker-2",
 	ToolFineliner2: "fineliner-2", ToolHighlighter2: "highlighter-2",
-	ToolCalligraphy: "calligraphy", ToolShader: "shader",
+	ToolCalligraphy: "calligraphy", ToolMaskedEraser: "masked-eraser", ToolShader: "shader",
 }
 
 // String answers the tool's name, or tool(N) for a number this package does
@@ -99,12 +100,13 @@ const (
 	// pages spell the same two colours as ColorHighlight plus an ARGB.
 	ColorHighlighterBlue   PenColor = 14
 	ColorHighlighterOrange PenColor = 15
+	ColorHighlighterGray   PenColor = 16
 )
 
 var penColorNames = [...]string{
 	"black", "gray", "white", "yellow", "green", "pink", "blue", "red", "gray-overlap",
 	"highlight", "green-2", "cyan", "magenta", "yellow-2", "highlighter-blue",
-	"highlighter-orange",
+	"highlighter-orange", "highlighter-gray",
 }
 
 // String answers the colour's name, or color(N) for an index this package
