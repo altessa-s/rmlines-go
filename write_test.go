@@ -361,3 +361,13 @@ func TestATemplateCanBeStampedOnAParsedPage(t *testing.T) {
 		t.Errorf("the template was not cleared")
 	}
 }
+
+func TestMaskedEraserAndGrayRoundTrip(t *testing.T) {
+	d := sampleDraft()
+	d.Strokes = []rmlines.DraftStroke{rmlines.DefaultStroke(rmlines.ToolMaskedEraser, rmlines.ColorHighlighterGray, []rmlines.DraftPoint{{X: 20, Y: 3}})}
+	p := roundTrip(t, d)
+	got := p.Strokes[0]
+	if !got.Tool.IsEraser() || got.Tool.String() != "masked-eraser" || got.Color != rmlines.ColorHighlighterGray || got.Color.String() != "highlighter-gray" {
+		t.Fatal(got)
+	}
+}

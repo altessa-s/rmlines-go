@@ -230,3 +230,12 @@ func TestParseConcurrently(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestMinimumBlockVersion(t *testing.T) {
+	page := append([]byte(rmlines.Header), 0, 0, 0, 0, 0, 3, 3, 5)
+	_, err := rmlines.Parse(page)
+	var detail *rmlines.Error
+	if !errors.Is(err, rmlines.ErrUnsupportedBlockVersion) || !errors.As(err, &detail) || detail.Version != 3 || detail.Value != 5 {
+		t.Fatalf("wrong block error: %v", err)
+	}
+}

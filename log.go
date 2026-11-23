@@ -5,6 +5,7 @@
 package rmlines
 
 /*
+#include <stdint.h>
 #include "rmlines/log.h"
 
 void rmgo_log_install(void);
@@ -12,6 +13,7 @@ void rmgo_log_install(void);
 import "C"
 
 import (
+	"runtime/cgo"
 	"sync"
 	"sync/atomic"
 )
@@ -51,7 +53,9 @@ var logInstalls atomic.Int32
 // at any time, from any goroutine.
 //
 // The handler runs on a separate goroutine, synchronously with the parse
-// that produced the line. It does not inherit goroutine-bound state such as
+// that produced the line. Session methods deliver buffered lines after the
+// operation unlocks the session and before returning to the caller.
+// The handler does not inherit goroutine-bound state such as
 // runtime.LockOSThread; shared state still needs its own guard. A panic or
 // runtime.Goexit is contained and loses only that line, so the parser can
 // finish and release its memory.
@@ -75,13 +79,19 @@ func SetLogger(handler func(level LogLevel, message string)) {
 }
 
 //export rmgoLog
-func rmgoLog(level C.int, message *C.char) {
+func rmgoLog(level C.int, message *C.char, buffer C.uintptr_t) {
 	handler := logHandler.Load()
 	if handler == nil {
 		return
 	}
 	text := C.GoString(message)
-	_, _ = runCallback(func() { (*handler)(LogLevel(level), text) })
+	deliver := func() { (*handler)(LogLevel(level), text) }
+	if buffer != 0 {
+		logs := cgo.Handle(buffer).Value().(*[]func())
+		*logs = append(*logs, deliver)
+		return
+	}
+	runCallback(deliver)
 }
 
 // runCallback waits for fn on a separate goroutine so neither a panic nor
